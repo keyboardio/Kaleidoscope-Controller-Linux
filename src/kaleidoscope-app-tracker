@@ -1,0 +1,65 @@
+#! /usr/bin/env python
+## kaleidoscope.-app-tracker -- App-based layer changer for Linux
+## Copyright (C) 2017  Gergely Nagy
+##
+## This program is free software: you can redistribute it and/or modify
+## it under the terms of the GNU General Public License as published by
+## the Free Software Foundation, either version 3 of the License, or
+## (at your option) any later version.
+##
+## This program is distributed in the hope that it will be useful,
+## but WITHOUT ANY WARRANTY; without even the implied warranty of
+## MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+## GNU General Public License for more details.
+##
+## You should have received a copy of the GNU General Public License
+## along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import wnck
+import gobject
+from gtk.gdk import display_get_default
+import serial
+import sys
+import json
+
+device = "/dev/ttyACM0"
+
+state = {
+    "appLayerMap": json.load(open ("kaleidoscope-app-tracker.conf.json")),
+    "activeLayer": 0,
+}
+
+def layerOff(layer):
+    with serial.Serial(device, 9600, timeout=1) as ser:
+        ser.write("layer.off {0}\n".format(layer))
+
+def layerOn(layer):
+    with serial.Serial(device, 9600, timeout=1) as ser:
+        ser.write("layer.on {0}\n".format(layer))
+
+def changeApp(screen, prevApp, state):
+    try:
+        currentApp = screen.get_active_window().get_application().get_name()
+    except Exception, e:
+        return
+
+    if state["activeLayer"] != 0:
+        layerOff(state["activeLayer"])
+
+    if currentApp not in state["appLayerMap"]:
+        activeLayer = 0
+        return
+
+    desiredLayer = state["appLayerMap"][currentApp]
+    state["activeLayer"] = desiredLayer
+    layerOn(state["activeLayer"])
+
+if len(sys.argv) > 1:
+    device = sys.argv[1]
+
+for screenId in range(0, display_get_default().get_n_screens()):
+    screen = wnck.screen_get(screenId)
+    screen.force_update()
+    screen.connect("active-window-changed", changeApp, state)
+
+gobject.MainLoop().run()
